@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>S&amp;P 500 Scanner</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14181d;
+    --border: #232830;
+    --text: #e6e8eb;
+    --muted: #8b94a3;
+    --accent: #6ea8ff;
+    --pos: #4ade80;
+    --neg: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header .meta { color: var(--muted); font-size: 12px; }
+  .controls { padding: 12px 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); }
+  input, select { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font: inherit; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .count { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .table-wrap { overflow: auto; max-height: calc(100vh - 110px); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
+  thead th { position: sticky; top: 0; background: var(--panel); cursor: pointer; user-select: none; font-weight: 600; font-size: 12px; color: var(--muted); }
+  thead th.sorted { color: var(--accent); }
+  thead th .arrow { font-size: 10px; margin-left: 4px; }
+  tbody tr:hover { background: #181d23; }
+  td.ticker { font-weight: 600; }
+  td.name { color: var(--muted); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .err { color: var(--neg); font-size: 11px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .loading { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>S&amp;P 500 Scanner</h1>
+  <span class="meta" id="meta">loading…</span>
+</header>
+<div class="controls">
+  <input id="q" placeholder="Filter by ticker or name…" autocomplete="off" />
+  <select id="sector"><option value="">All sectors</option></select>
+  <span class="count" id="count"></span>
+</div>
+<div class="table-wrap">
+  <table>
+    <thead><tr id="head"></tr></thead>
+    <tbody id="body"><tr><td colspan="14" class="loading">Loading data…</td></tr></tbody>
+  </table>
+</div>
+<script>
+const COLS = [
+  { k: "ticker",      label: "Ticker",     fmt: (v,r) => `<a href="https://finance.yahoo.com/quote/${v}" target="_blank" rel="noopener">${v}</a>`, cls: "ticker" },
+  { k: "name",        label: "Name",       cls: "name" },
+  { k: "sector",      label: "Sector" },
+  { k: "price",       label: "Price",      fmt: fmtUSD },
+  { k: "market_cap",  label: "Mkt Cap",    fmt: fmtBig },
+  { k: "pe",          label: "P/E",        fmt: fmtNum2 },
+  { k: "forward_pe",  label: "Fwd P/E",    fmt: fmtNum2 },
+  { k: "ps",          label: "P/S",        fmt: fmtNum2 },
+  { k: "pb",          label: "P/B",        fmt: fmtNum2 },
+  { k: "next_earnings", label: "Earnings", fmt: v => v ? String(v).slice(0,10) : "—" },
+  { k: "fcf_latest",  label: "FCF",        fmt: fmtBig },
+  { k: "fcf_yoy",     label: "FCF YoY",    fmt: fmtPctSigned },
+  { k: "fcf_cagr_3y", label: "FCF 3y CAGR", fmt: fmtPctSigned },
+  { k: "fcf_margin",  label: "FCF Margin", fmt: fmtPct },
+  { k: "fcf_yield",   label: "FCF Yield",  fmt: fmtPct },
+];
+
+let DATA = [];
+let sortKey = "market_cap";
+let sortDir = -1;
+
+function fmtNum2(v) { return v == null ? "—" : Number(v).toFixed(2); }
+function fmtUSD(v)  { return v == null ? "—" : "$" + Number(v).toFixed(2); }
+function fmtPct(v)  { return v == null ? "—" : (v * 100).toFixed(1) + "%"; }
+function fmtPctSigned(v) {
+  if (v == null) return "—";
+  const s = (v * 100).toFixed(1) + "%";
+  return `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : ""}${s}</span>`;
+}
+function fmtBig(v) {
+  if (v == null) return "—";
+  const a = Math.abs(v);
+  const sign = v < 0 ? "-" : "";
+  if (a >= 1e12) return sign + "$" + (a / 1e12).toFixed(2) + "T";
+  if (a >= 1e9)  return sign + "$" + (a / 1e9).toFixed(2)  + "B";
+  if (a >= 1e6)  return sign + "$" + (a / 1e6).toFixed(2)  + "M";
+  return sign + "$" + a.toFixed(0);
+}
+
+function renderHead() {
+  const tr = document.getElementById("head");
+  tr.innerHTML = COLS.map(c => {
+    const sorted = c.k === sortKey ? "sorted" : "";
+    const arrow  = c.k === sortKey ? `<span class="arrow">${sortDir < 0 ? "▼" : "▲"}</span>` : "";
+    return `<th data-k="${c.k}" class="${sorted}">${c.label}${arrow}</th>`;
+  }).join("");
+  tr.querySelectorAll("th").forEach(th => {
+    th.onclick = () => {
+      const k = th.dataset.k;
+      if (k === sortKey) sortDir = -sortDir; else { sortKey = k; sortDir = -1; }
+      render();
+    };
+  });
+}
+
+function render() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const sec = document.getElementById("sector").value;
+  let rows = DATA.filter(r => {
+    if (sec && r.sector !== sec) return false;
+    if (!q) return true;
+    return (r.ticker || "").toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q);
+  });
+  rows.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "string") return sortDir * av.localeCompare(bv);
+    return sortDir * (av - bv);
+  });
+  document.getElementById("count").textContent = `${rows.length} of ${DATA.length}`;
+  renderHead();
+  const tb = document.getElementById("body");
+  tb.innerHTML = rows.map(r => {
+    if (r.error) {
+      return `<tr><td class="ticker">${r.ticker}</td><td class="name">${r.name || ""}</td><td colspan="${COLS.length - 2}" class="err">${r.error}</td></tr>`;
+    }
+    return "<tr>" + COLS.map(c => {
+      const v = r[c.k];
+      const cell = c.fmt ? c.fmt(v, r) : (v == null ? "—" : v);
+      return `<td class="${c.cls || ""}">${cell}</td>`;
+    }).join("") + "</tr>";
+  }).join("");
+}
+
+async function load() {
+  try {
+    const res = await fetch("data.json", { cache: "no-cache" });
+    const payload = await res.json();
+    DATA = payload.rows || [];
+    const sectors = [...new Set(DATA.map(r => r.sector).filter(Boolean))].sort();
+    const sel = document.getElementById("sector");
+    sectors.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); });
+    document.getElementById("meta").textContent = `${payload.count} stocks · updated ${payload.generated_at}`;
+    document.getElementById("q").oninput = render;
+    sel.onchange = render;
+    render();
+  } catch (e) {
+    document.getElementById("body").innerHTML = `<tr><td colspan="${COLS.length}" class="err">Failed to load data.json: ${e.message}</td></tr>`;
+  }
+}
+load();
+</script>
+</body>
+</html>

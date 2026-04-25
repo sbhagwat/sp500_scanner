@@ -1,0 +1,5 @@
+yfinance>=0.2.50
+pandas>=2.2
+requests>=2.32
+lxml>=5.3
+beautifulsoup4>=4.12

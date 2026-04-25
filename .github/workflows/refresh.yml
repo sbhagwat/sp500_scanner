@@ -34,11 +34,12 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        working-directory: site
         run: |
           npm i -g vercel@latest
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-          vercel deploy --prod --yes --skip-domain --token="$VERCEL_TOKEN"
+          DEPLOY_URL=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN")
+          echo "Deployed to $DEPLOY_URL"
+          vercel alias set "$DEPLOY_URL" sp500-scanner-virid.vercel.app --token="$VERCEL_TOKEN"
 
       - name: Commit refreshed data back to repo
         run: |

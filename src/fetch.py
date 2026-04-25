@@ -70,6 +70,33 @@ def _next_earnings(t: yf.Ticker) -> str | None:
     return None
 
 
+def _capex_latest(t: yf.Ticker) -> float | None:
+    """Latest annual capital expenditure as a positive absolute value."""
+    try:
+        cf = t.cashflow
+        if cf is None or cf.empty:
+            return None
+        idx = cf.index.astype(str)
+        for key in ("Capital Expenditure", "Capital Expenditures"):
+            if key in idx:
+                s = cf.loc[cf.index.astype(str) == key].iloc[0].dropna().sort_index()
+                if not s.empty:
+                    return abs(float(s.iloc[-1]))
+    except Exception:
+        pass
+    return None
+
+
+def _intensity_label(capex_to_rev: float | None) -> str | None:
+    if capex_to_rev is None:
+        return None
+    if capex_to_rev < 0.05:
+        return "light"
+    if capex_to_rev < 0.15:
+        return "moderate"
+    return "heavy"
+
+
 def _fcf_series(t: yf.Ticker) -> pd.Series:
     """Annual Free Cash Flow series, oldest -> newest."""
     try:
@@ -120,6 +147,11 @@ def fetch_one(row: dict) -> dict:
         revenue = _safe(info.get("totalRevenue"))
         market_cap = out["market_cap"]
 
+        capex = _capex_latest(t)
+        out["capex"] = capex
+        out["capex_to_revenue"] = (capex / revenue) if (capex is not None and revenue) else None
+        out["asset_intensity"] = _intensity_label(out["capex_to_revenue"])
+
         fcf = _fcf_series(t)
         if not fcf.empty:
             latest = float(fcf.iloc[-1])
@@ -133,7 +165,7 @@ def fetch_one(row: dict) -> dict:
             out["fcf_yield"] = (latest / market_cap) if market_cap else None
         else:
             for k in ("fcf_latest", "fcf_yoy", "fcf_cagr_3y", "fcf_margin", "fcf_yield"):
-                out[k] = None
+                out.setdefault(k, None)
 
         out["error"] = None
     except Exception as e:

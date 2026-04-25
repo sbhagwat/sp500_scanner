@@ -36,6 +36,10 @@
   td.name { color: var(--muted); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
   .pos { color: var(--pos); }
   .neg { color: var(--neg); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge-light    { background: rgba(74,222,128,.15); color: #4ade80; }
+  .badge-moderate { background: rgba(250,204,21,.15); color: #facc15; }
+  .badge-heavy    { background: rgba(248,113,113,.15); color: #f87171; }
   .err { color: var(--neg); font-size: 11px; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -70,6 +74,9 @@ const COLS = [
   { k: "ps",          label: "P/S",        fmt: fmtNum2 },
   { k: "pb",          label: "P/B",        fmt: fmtNum2 },
   { k: "next_earnings", label: "Earnings", fmt: v => v ? String(v).slice(0,10) : "—" },
+  { k: "capex",       label: "CapEx",      fmt: fmtBig },
+  { k: "capex_to_revenue", label: "CapEx/Rev", fmt: fmtPct },
+  { k: "asset_intensity",  label: "Intensity",  fmt: fmtIntensity },
   { k: "fcf_latest",  label: "FCF",        fmt: fmtBig },
   { k: "fcf_yoy",     label: "FCF YoY",    fmt: fmtPctSigned },
   { k: "fcf_cagr_3y", label: "FCF 3y CAGR", fmt: fmtPctSigned },
@@ -88,6 +95,10 @@ function fmtPctSigned(v) {
   if (v == null) return "—";
   const s = (v * 100).toFixed(1) + "%";
   return `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : ""}${s}</span>`;
+}
+function fmtIntensity(v) {
+  if (!v) return "—";
+  return `<span class="badge badge-${v}">${v[0].toUpperCase()}${v.slice(1)}</span>`;
 }
 function fmtBig(v) {
   if (v == null) return "—";

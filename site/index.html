@@ -40,6 +40,8 @@
   .badge-light    { background: rgba(74,222,128,.15); color: #4ade80; }
   .badge-moderate { background: rgba(250,204,21,.15); color: #facc15; }
   .badge-heavy    { background: rgba(248,113,113,.15); color: #f87171; }
+  .badge-buffett  { background: rgba(110,168,255,.15); color: #6ea8ff; }
+  .badge-graham   { background: rgba(167,139,250,.18); color: #a78bfa; }
   .err { color: var(--neg); font-size: 11px; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -74,6 +76,7 @@ const COLS = [
   { k: "ps",          label: "P/S",        fmt: fmtNum2 },
   { k: "pb",          label: "P/B",        fmt: fmtNum2 },
   { k: "next_earnings", label: "Earnings", fmt: v => v ? String(v).slice(0,10) : "—" },
+  { k: "value_style", label: "Style",      fmt: fmtStyle },
   { k: "capex",       label: "CapEx",      fmt: fmtBig },
   { k: "capex_to_revenue", label: "CapEx/Rev", fmt: fmtPct },
   { k: "asset_intensity",  label: "Intensity",  fmt: fmtIntensity },
@@ -99,6 +102,11 @@ function fmtPctSigned(v) {
 function fmtIntensity(v) {
   if (!v) return "—";
   return `<span class="badge badge-${v}">${v[0].toUpperCase()}${v.slice(1)}</span>`;
+}
+function fmtStyle(v) {
+  if (!v) return "—";
+  const label = v === "buffett" ? "Buffett" : "Graham";
+  return `<span class="badge badge-${v}">${label}</span>`;
 }
 function fmtBig(v) {
   if (v == null) return "—";

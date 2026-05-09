@@ -97,6 +97,46 @@ def _intensity_label(capex_to_rev: float | None) -> str | None:
     return "heavy"
 
 
+def _value_style(r: dict) -> str | None:
+    """Tag a stock with the value-investing style it most resembles.
+
+    Buffett checks first (quality compounder at fair price). If a row
+    qualifies for both, Buffett wins. Returns None if neither fits.
+    Approximations using only data we already collect from yfinance:
+
+    - Buffett: high FCF margin, durable FCF growth, reasonable P/E,
+      decent FCF yield (price discipline). Stand-ins for "wide moat
+      quality compounder at a fair price."
+    - Graham: classic statistical cheapness — low P/E AND low P/B,
+      with positive FCF as a sanity check on earnings quality.
+    """
+    pe = r.get("pe")
+    pb = r.get("pb")
+    margin = r.get("fcf_margin")
+    cagr = r.get("fcf_cagr_3y")
+    fcf_y = r.get("fcf_yield")
+
+    is_buffett = (
+        margin is not None and margin >= 0.15
+        and cagr is not None and cagr >= 0.10
+        and pe is not None and 0 < pe <= 25
+        and fcf_y is not None and fcf_y >= 0.03
+    )
+    if is_buffett:
+        return "buffett"
+
+    is_graham = (
+        pe is not None and 0 < pe <= 15
+        # 0.1 floor rejects bogus near-zero P/B values from yfinance (e.g. BRK-B).
+        and pb is not None and 0.1 <= pb <= 1.5
+        and margin is not None and margin > 0
+    )
+    if is_graham:
+        return "graham"
+
+    return None
+
+
 def _fcf_series(t: yf.Ticker) -> pd.Series:
     """Annual Free Cash Flow series, oldest -> newest."""
     try:
@@ -167,6 +207,7 @@ def fetch_one(row: dict) -> dict:
             for k in ("fcf_latest", "fcf_yoy", "fcf_cagr_3y", "fcf_margin", "fcf_yield"):
                 out.setdefault(k, None)
 
+        out["value_style"] = _value_style(out)
         out["error"] = None
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {e}"
